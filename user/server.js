@@ -15,6 +15,75 @@ const express = require('express');
 const pino = require('pino');
 const expPino = require('express-pino-logger');
 
+// Prometheus
+const promClient = require('prom-client');
+const Registry = promClient.Registry;
+const register = new Registry();
+
+// Redis response time
+const rt_user_get_redis = new promClient.Histogram(
+    {
+        name: 'rt_user_get_redis',
+        help: 'response time of redis GET request from user',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_get_mongo_checkid = new promClient.Histogram(
+    {
+        name: 'rt_user_get_mongo_checkid',
+        help: 'response time of mongo user id GET request from user',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_get_mongo_users = new promClient.Histogram(
+    {
+        name: 'rt_user_get_mongo_users',
+        help: 'response time of mongo users GET request from user',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_post_mongo_login = new promClient.Histogram(
+    {
+        name: 'rt_user_post_mongo_login',
+        help: 'response time of login',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_post_mongo_register = new promClient.Histogram(
+    {
+        name: 'rt_user_post_mongo_register',
+        help: 'response time of register',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_post_mongo_order = new promClient.Histogram(
+    {
+        name: 'rt_user_post_mongo_order',
+        help: 'response time of order',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
+const rt_user_get_mongo_history = new promClient.Histogram(
+    {
+        name: 'rt_user_get_mongo_history',
+        help: 'response time of mongo history GET request from user',
+        buckets: [0,10,50,100,200,500,1000,5000,10000],
+        registers: [register],
+    }
+);
+
 // MongoDB
 var db;
 var usersCollection;
@@ -66,8 +135,16 @@ app.get('/health', (req, res) => {
     res.json(stat);
 });
 
+// Prometheus
+app.get('/metrics', (req, res) => {
+    res.header('Content-Type', promClient.register.contentType);
+    res.send(register.metrics());
+});
+
 // use REDIS INCR to track anonymous users
 app.get('/uniqueid', (req, res) => {
+    // Start timing service: redis(/get)
+    var start = new Date().getTime();
     // get number from Redis
     redisClient.incr('anonymous-counter', (err, r) => {
         if(!err) {
@@ -79,10 +156,14 @@ app.get('/uniqueid', (req, res) => {
             res.status(500).send(err);
         }
     });
+    var elapsed = new Date().getTime() - start; // End timing service: redis(/get)
+    rt_user_get_redis.observe(elapsed)
 });
 
 // check user exists
 app.get('/check/:id', (req, res) => {
+    // Start timing service: mongo(/get)
+    var start = new Date().getTime();
     if(mongoConnected) {
         usersCollection.findOne({name: req.params.id}).then((user) => {
             if(user) {
@@ -98,10 +179,14 @@ app.get('/check/:id', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: mongo(/get)
+    rt_user_get_mongo_checkid.observe(elapsed)
 });
 
 // return all users for debugging only
 app.get('/users', (req, res) => {
+    // Start timing service: mongo(/get)
+    var start = new Date().getTime();
     if(mongoConnected) {
         usersCollection.find().toArray().then((users) => {
             res.json(users);
@@ -113,9 +198,13 @@ app.get('/users', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: mongo(/get)
+    rt_user_get_mongo_users.observe(elapsed)
 });
 
 app.post('/login', (req, res) => {
+    // Start timing service: login(/post)
+    var start = new Date().getTime();
     req.log.info('login', req.body);
     if(req.body.name === undefined || req.body.password === undefined) {
         req.log.warn('credentails not complete');
@@ -142,10 +231,14 @@ app.post('/login', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: login(/post)
+    rt_user_post_mongo_login.observe(elapsed)
 });
 
 // TODO - validate email address format
 app.post('/register', (req, res) => {
+    // Start timing service: register(/post)
+    var start = new Date().getTime();
     req.log.info('register', req.body);
     if(req.body.name === undefined || req.body.password === undefined || req.body.email === undefined) {
         req.log.warn('insufficient data');
@@ -178,9 +271,13 @@ app.post('/register', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: register(/post)
+    rt_user_post_mongo_register.observe(elapsed)
 });
 
 app.post('/order/:id', (req, res) => {
+    // Start timing service: order(/post)
+    var start = new Date().getTime();
     req.log.info('order', req.body);
     // only for registered users
     if(mongoConnected) {
@@ -232,9 +329,13 @@ app.post('/order/:id', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: order(/post)
+    rt_user_post_mongo_order.observe(elapsed)
 });
 
 app.get('/history/:id', (req, res) => {
+    // Start timing service: mongo_history(/get)
+    var start = new Date().getTime();
     if(mongoConnected) {
         ordersCollection.findOne({
             name: req.params.id
@@ -252,6 +353,8 @@ app.get('/history/:id', (req, res) => {
         req.log.error('database not available');
         res.status(500).send('database not available');
     }
+    var elapsed = new Date().getTime() - start; // End timing service: mongo_history(/get)
+    rt_user_get_mongo_history.observe(elapsed)
 });
 
 // connect to Redis

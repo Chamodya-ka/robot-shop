@@ -23,6 +23,39 @@ const counter = new promClient.Counter({
     registers: [register]
 });
 
+// Redis response time
+const rt_cart_get_redis = new promClient.Histogram(
+    {
+        name: 'rt_cart_get_redis',
+        help: 'response time of redis GET request from cart',
+        buckets: [0, 0.05, 0.1, 0.2, 1, 50, 100, 150],
+        registers: [register],
+    }
+    );
+
+const rt_cart_delete_redis = new promClient.Histogram({
+    name: 'rt_cart_delete_redis',
+    help: 'response time of DELETE request to redis from cart',
+    buckets: [0, 0.05, 0.1, 0.2, 1, 50, 100, 150],
+    registers: [register],
+}
+);
+
+const rt_cart_post_redis = new promClient.Histogram({
+    name: 'rt_cart_post_redis',
+    help: 'response time of POST request to redis from cart',
+    buckets: [0, 0.05, 0.1, 0.2, 1, 50, 100, 150],
+    registers: [register],
+}
+);
+
+const rt_cart_get_catalogue = new promClient.Histogram({
+    name: 'rt_cart_get_catalogue',
+    help: 'response time of GET request to catalogue from cart',
+    buckets: [0, 0.05, 0.1, 0.2, 1, 50, 100, 150],
+    registers: [register],
+}
+);
 
 var redisConnected = false;
 
@@ -82,6 +115,8 @@ app.get('/metrics', (req, res) => {
 
 // get cart with id
 app.get('/cart/:id', (req, res) => {
+    // Start timing service: redis(/get)
+    var start = new Date().getTime();
     redisClient.get(req.params.id, (err, data) => {
         if(err) {
             req.log.error('ERROR', err);
@@ -95,10 +130,13 @@ app.get('/cart/:id', (req, res) => {
             }
         }
     });
+    var elapsed = new Date().getTime() - start; // End timing service: redis(/get)
+    rt_cart_get_redis.observe(elapsed)
 });
 
 // delete cart with id
 app.delete('/cart/:id', (req, res) => {
+    var start = new Date().getTime();     // Start timing: redis(/delete)
     redisClient.del(req.params.id, (err, data) => {
         if(err) {
             req.log.error('ERROR', err);
@@ -111,10 +149,13 @@ app.delete('/cart/:id', (req, res) => {
             }
         }
     });
+    var elapsed = new Date().getTime() - start; // End timing: redis(/delete)
+    rt_cart_delete_redis.observe(elapsed)
 });
 
 // rename cart i.e. at login
 app.get('/rename/:from/:to', (req, res) => {
+    var start = new Date().getTime();     // Start timing: redis(/delete)
     redisClient.get(req.params.from, (err, data) => {
         if(err) {
             req.log.error('ERROR', err);
@@ -133,6 +174,8 @@ app.get('/rename/:from/:to', (req, res) => {
             }
         }
     });
+    var elapsed = new Date().getTime() - start; // End timing: redis(/update)
+    rt_cart_get_redis.observe(elapsed)
 });
 
 // update/create cart
@@ -162,6 +205,7 @@ app.get('/add/:id/:sku/:qty', (req, res) => {
             return;
         }
         // does the cart already exist?
+        var start = new Date().getTime();
         redisClient.get(req.params.id, (err, data) => {
             if(err) {
                 req.log.error('ERROR', err);
@@ -203,6 +247,8 @@ app.get('/add/:id/:sku/:qty', (req, res) => {
                 });
             }
         });
+        var elapsed = new Date().getTime() - start; // End timing: redis(/get)
+        rt_cart_get_redis.observe(elapsed)
     }).catch((err) => {
         req.log.error(err);
         res.status(500).send(err);
@@ -224,6 +270,7 @@ app.get('/update/:id/:sku/:qty', (req, res) => {
     }
 
     // get the cart
+    var start = new Date().getTime();
     redisClient.get(req.params.id, (err, data) => {
         if(err) {
             req.log.error('ERROR', err);
@@ -263,6 +310,8 @@ app.get('/update/:id/:sku/:qty', (req, res) => {
             }
         }
     });
+    var elapsed = new Date().getTime() - start; // End timing service: redis(/get)
+    rt_cart_get_redis.observe(elapsed)
 });
 
 // add shipping
@@ -273,6 +322,7 @@ app.post('/shipping/:id', (req, res) => {
         res.status(400).send('shipping data missing');
     } else {
         // get the cart
+        var start = new Date().getTime();
         redisClient.get(req.params.id, (err, data) => {
             if(err) {
                 req.log.error('ERROR', err);
@@ -318,6 +368,8 @@ app.post('/shipping/:id', (req, res) => {
                 }
             }
         });
+        var elapsed = new Date().getTime() - start; // End timing service: redis(/get)
+        rt_cart_get_redis.observe(elapsed)
     }
 });
 
@@ -359,6 +411,7 @@ function calcTax(total) {
 
 function getProduct(sku) {
     return new Promise((resolve, reject) => {
+        var start = new Date().getTime();     // Start timing: catalogue(/get)
         request('http://' + catalogueHost + ':8080/product/' + sku, (err, res, body) => {
             if(err) {
                 reject(err);
@@ -370,12 +423,15 @@ function getProduct(sku) {
                 resolve(JSON.parse(body));
             }
         });
+        var elapsed = new Date().getTime() - start; // End timing: catalogue(/get)
+        rt_cart_get_catalogue.observe(elapsed)
     });
 }
 
 function saveCart(id, cart) {
     logger.info('saving cart', cart);
     return new Promise((resolve, reject) => {
+        var start = new Date().getTime();     // Start timing: redis(/post)
         redisClient.setex(id, 3600, JSON.stringify(cart), (err, data) => {
             if(err) {
                 reject(err);
@@ -383,6 +439,8 @@ function saveCart(id, cart) {
                 resolve(data);
             }
         });
+        var elapsed = new Date().getTime() - start; // End timing: redis(/post)
+        rt_cart_post_redis.observe(elapsed)
     });
 }
 

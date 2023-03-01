@@ -167,6 +167,17 @@ services:
     logging:
       <<: *logging
 
+  rating-metric-listener:
+    build:
+      context: rating-metric-listener
+    image: ${REPO}/rs-rating-metric-listener:${TAG}
+    depends_on:
+      - ratings
+    networks:
+      - robot-shop
+    ports:
+      - "8082:8082"
+
 networks:
   robot-shop:
 

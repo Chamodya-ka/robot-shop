@@ -8,6 +8,14 @@ use Exception;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+/**
+ * @Route("/catservice")
+ */
 class CatalogueService implements LoggerAwareInterface
 {
     use LoggerAwareTrait;
@@ -21,9 +29,10 @@ class CatalogueService implements LoggerAwareInterface
     {
         $this->catalogueUrl = $catalogueUrl;
     }
+ 
 
     public function checkSKU(string $sku): bool
-    {
+    {   
         $url = sprintf('%s/product/%s', $this->catalogueUrl, $sku);
 
         $opt = [
@@ -42,7 +51,6 @@ class CatalogueService implements LoggerAwareInterface
         $this->logger->info("catalogue status $status");
 
         curl_close($curl);
-
         return 200 === $status;
     }
 }

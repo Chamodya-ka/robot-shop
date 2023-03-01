@@ -30,6 +30,10 @@ PromMetrics = {}
 PromMetrics['SOLD_COUNTER'] = Counter('sold_count', 'Running count of items sold')
 PromMetrics['AUS'] = Histogram('units_sold', 'Avergae Unit Sale', buckets=(1, 2, 5, 10, 100))
 PromMetrics['AVS'] = Histogram('cart_value', 'Avergae Value Sale', buckets=(100, 200, 500, 1000, 2000, 5000, 10000))
+PromMetrics['rt_web_post_payment'] = Histogram('rt_web_post_payment', 'Pay response time', buckets=(0,10,50,100,200,500,1000,5000,10000))
+PromMetrics['rt_payment_post_user'] = Histogram('rt_payment_post_user', 'Post order response time', buckets=(0,10,50,100,200,500,1000,5000,10000))
+PromMetrics['rt_payment_get_user'] = Histogram('rt_payment_get_user', 'Check user id response time', buckets=(0,10,50,100,200,500,1000,5000,10000))
+PromMetrics['rt_payment_delete_cart'] = Histogram('rt_payment_delete_cart', 'Delete cart response time', buckets=(0,10,50,100,200,500,1000,5000,10000))
 
 
 @app.errorhandler(Exception)
@@ -52,16 +56,26 @@ def metrics():
 
 
 @app.route('/pay/<id>', methods=['POST'])
-def pay(id):
-    app.logger.info('payment for {}'.format(id))
+def proccess_pay(id): #Calculates response time taken to process and send the response
+    start = time.time()
     cart = request.get_json()
+    res = pay(id,cart)
+    PromMetrics['rt_web_post_payment'].observe(int((time.time()-start)*1000))
+    # time.time() gives time to 1us precision, for 1ns use time.perf_counter_ns()
+    return res
+
+def pay(id,cart):
+    app.logger.info('payment for {}'.format(id))
+    
     app.logger.info(cart)
 
     anonymous_user = True
 
     # check user exists
     try:
+        start = time.time()
         req = requests.get('http://{user}:8080/check/{id}'.format(user=USER, id=id))
+        PromMetrics['rt_payment_get_user'].observe(int((time.time()-start)*1000))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
@@ -80,14 +94,15 @@ def pay(id):
         return 'cart not valid', 400
 
     # dummy call to payment gateway, hope they dont object
-    try:
-        req = requests.get(PAYMENT_GATEWAY)
-        app.logger.info('{} returned {}'.format(PAYMENT_GATEWAY, req.status_code))
-    except requests.exceptions.RequestException as err:
-        app.logger.error(err)
-        return str(err), 500
-    if req.status_code != 200:
-        return 'payment error', req.status_code
+    time.sleep(0.2) # for execute payment 
+    # try:
+    #     req = requests.get(PAYMENT_GATEWAY)
+    #     app.logger.info('{} returned {}'.format(PAYMENT_GATEWAY, req.status_code))
+    # except requests.exceptions.RequestException as err:
+    #     app.logger.error(err)
+    #     return str(err), 500
+    # if req.status_code != 200:
+    #     return 'payment error', req.status_code
 
     # Prometheus
     # items purchased
@@ -103,17 +118,21 @@ def pay(id):
     # add to order history
     if not anonymous_user:
         try:
+            start = time.time()
             req = requests.post('http://{user}:8080/order/{id}'.format(user=USER, id=id),
                     data=json.dumps({'orderid': orderid, 'cart': cart}),
                     headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
+            PromMetrics['rt_payment_post_user'].observe(int((time.time()-start)*1000))
         except requests.exceptions.RequestException as err:
             app.logger.error(err)
             return str(err), 500
 
     # delete cart
     try:
+        start = time.time()
         req = requests.delete('http://{cart}:8080/cart/{id}'.format(cart=CART, id=id));
+        PromMetrics['rt_payment_delete_cart'].observe(int((time.time()-start)*1000))
         app.logger.info('cart delete returned {}'.format(req.status_code))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
@@ -146,7 +165,6 @@ def countItems(items):
 
 # RabbitMQ
 publisher = Publisher(app.logger)
-
 if __name__ == "__main__":
     sh = logging.StreamHandler(sys.stdout)
     sh.setLevel(logging.INFO)

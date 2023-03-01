@@ -1,0 +1,3 @@
+uwsgi
+Flask
+prometheus_client

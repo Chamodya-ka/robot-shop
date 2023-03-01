@@ -3,11 +3,19 @@
 declare(strict_types=1);
 
 namespace Instana\RobotShop\Ratings\Service;
-
+//namespace promphp\prometheus_client_php\Prometheus;
 use PDO;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+//use promphp\prometheus_client_php\Prometheus;
 
+/**
+ * @Route("/ratservice")
+ */
 class RatingsService implements LoggerAwareInterface
 {
     private const QUERY_RATINGS_BY_SKU = 'select avg_rating, rating_count from ratings where sku = ?';
@@ -21,13 +29,16 @@ class RatingsService implements LoggerAwareInterface
      */
     private $connection;
 
+    
     public function __construct(PDO $connection)
     {
         $this->connection = $connection;
+        
     }
 
+
     public function ratingBySku(string $sku): array
-    {
+    {   
         $stmt = $this->connection->prepare(self::QUERY_RATINGS_BY_SKU);
         if (false === $stmt->execute([$sku])) {
             $this->logger->error('failed to query data');
@@ -44,24 +55,27 @@ class RatingsService implements LoggerAwareInterface
         }
 
         // nicer to return an empty record than throw 404
+
         return ['avg_rating' => 0, 'rating_count' => 0];
     }
 
     public function updateRatingForSKU(string $sku, $score, int $count): void
-    {
+    {   
         $stmt = $this->connection->prepare(self::QUERY_UPDATE_RATINGS_BY_SKU);
         if (!$stmt->execute([$score, $count, $sku])) {
             $this->logger->error('failed to update rating');
             throw new \Exception('Failed to update data', 500);
         }
+
     }
 
     public function addRatingForSKU($sku, $rating): void
-    {
+    {   
         $stmt = $this->connection->prepare(self::QUERY_INSERT_RATING);
         if (!$stmt->execute([$sku, $rating, 1])) {
             $this->logger->error('failed to insert data');
             throw new \Exception('Failed to insert data', 500);
         }
+
     }
 }

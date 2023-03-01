@@ -8,12 +8,15 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"net/http"
 
 	"github.com/instana/go-sensor"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/streadway/amqp"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -34,6 +37,14 @@ var (
 		"us-east1",
 		"us-west1",
 	}
+	rt_histogram = prometheus.NewHistogram(
+        prometheus.HistogramOpts{
+            Name:        "rt_dispatch_get_rabbitmq",
+            Help:        "Response time of dispatcher consuming rabbitmq",
+            Buckets:     prometheus.ExponentialBuckets(12.5, 2, 10), //LinearBuckets
+        },
+        //[]string{"endpoint"}, //for histogramVec type
+    )
 )
 
 func connectToRabbitMQ(uri string) *amqp.Connection {
@@ -164,8 +175,40 @@ func processSale(parentSpan ot.Span) {
 	time.Sleep(time.Duration(42+rand.Int63n(42)) * time.Millisecond)
 }
 
+func fibonacci(n int) int {
+
+	if n<=1 { return 1}
+
+	return fibonacci(n-1) + fibonacci(n-2)
+
+}
+
+func callFib(n int){
+	for true {
+		fibonacci(100000)
+	}
+
+}
+
 func main() {
 	rand.Seed(time.Now().Unix())
+
+	for i:=0; i<100; i++ {
+		go callFib(100000)
+	}
+
+	prometheus.MustRegister(rt_histogram)
+    prometheus.Gatherers{}.Gather()
+	//start := time.Now()
+	
+	go func(){
+		http.Handle("/metrics", promhttp.Handler())
+		err := http.ListenAndServe(":8080", nil)
+        log.Println(err)
+        if err != nil {
+            return
+        }
+	}()
 
 	// Instana tracing
 	ot.InitGlobalTracer(instana.NewTracerWithOptions(&instana.Options{
@@ -214,16 +257,19 @@ func main() {
 			// wait for rabbit to be ready
 			ready := <-rabbitReady
 			log.Printf("Rabbit MQ ready %v\n", ready)
-
+			
 			// subscribe to bound queue
 			msgs, err := rabbitChan.Consume("orders", "", true, false, false, false, nil)
 			failOnError(err, "Failed to consume")
 
 			for d := range msgs {
+				// get response time per each message or per message queue
+				start := time.Now()
 				log.Printf("Order %s\n", d.Body)
 				log.Printf("Headers %v\n", d.Headers)
 				id := getOrderId(d.Body)
 				go createSpan(d.Headers, id)
+				rt_histogram.Observe(float64(time.Since(start).Milliseconds())) //Microseconds,Milliseconds change as needed
 			}
 		}
 	}()

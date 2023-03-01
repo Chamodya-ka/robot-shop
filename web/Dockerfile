@@ -32,6 +32,7 @@ ENV CATALOGUE_HOST=catalogue \
     SHIPPING_HOST=shipping \
     PAYMENT_HOST=payment \
     RATINGS_HOST=ratings \
+    DISPATCH_HOST=dispatch \
     INSTANA_SERVICE_NAME=nginx-web
 
 # Instana tracing

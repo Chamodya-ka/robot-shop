@@ -81,6 +81,10 @@ server {
         proxy_pass http://${RATINGS_HOST}:80/;
     }
 
+    location /api/dispatch/ {
+        proxy_pass http://${DISPATCH_HOST}:8080/;
+    }
+
     location /nginx_status {
         stub_status on;
         access_log off;

@@ -96,6 +96,7 @@ class Kernel extends BaseKernel implements EventSubscriberInterface
         $c->register(CatalogueService::class)
             ->addArgument($c->getParameter('catalogueUrl'))
             ->addMethodCall('setLogger', [new Reference('logger')])
+            ->addTag('controller.service_arguments')
             ->setAutowired(true);
 
         $c->register(HealthCheckService::class)
@@ -110,6 +111,7 @@ class Kernel extends BaseKernel implements EventSubscriberInterface
 
         $c->register(RatingsService::class)
             ->addMethodCall('setLogger', [new Reference('logger')])
+            ->addTag('controller.service_arguments')
             ->setAutowired(true);
 
         $c->register(HealthController::class)
@@ -132,5 +134,6 @@ class Kernel extends BaseKernel implements EventSubscriberInterface
     protected function configureRoutes(RouteCollectionBuilder $routes)
     {
         $routes->import(__DIR__.'/Controller/', '/', 'annotation');
+        $routes->import(__DIR__.'/Service/', '/', 'annotation');
     }
 }
